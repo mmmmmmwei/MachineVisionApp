@@ -1,6 +1,8 @@
 ﻿using System.Runtime.InteropServices;
 using Serilog;
 using Serilog.Core;
+using System.Reflection;
+using System.IO;
 
 namespace ConsoleApp1;
 
@@ -9,13 +11,31 @@ class Program
     static void Main()
     {
         //---------------------------------------------------------------
+        // START create application folder
+        //---------------------------------
+        string appName = Path.GetFileNameWithoutExtension(
+            Assembly.GetExecutingAssembly().Location);
+
+        string appFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            appName
+        );
+
+        Directory.CreateDirectory(appFolder);
+        //---------------------------------------------------------------
+        // END create application folder
+        //-------------------------------
+
+        //---------------------------------------------------------------
         // START logging
         //---------------
+        string logFileName="logs/visionapp-.log";
+        string logFilePath=Path.Combine(appFolder,logFileName);
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()                  // capture debug and above
             .WriteTo.Console()                     // log to console
             .WriteTo.File(
-                path: "logs/visionapp-.log",
+                path: logFilePath,
                 rollingInterval: RollingInterval.Day,          // new file every day
                 fileSizeLimitBytes: 10_000_000,                // 10 MB
                 rollOnFileSizeLimit: true,                     // create new file when size exceeded
@@ -35,15 +55,20 @@ class Program
         //--------------------
         Log.Information("Start user login");
 
-        var repo = new UserRepository("visionapp.db");
+        string dbFileName="visionapp.db";
+        string dbFilePath=Path.Combine(appFolder,dbFileName);
+
+        var repo = new UserRepository(dbFilePath);
         var userManager = new UserManager(repo);
 
         // check if admin exist in the user database
         Log.Information("Check if admin exist");
-        var admin = repo.GetUserByRole(UserRole.Admin);
-        if (admin == null)
+        // if admin not exist
+        // in debug mode: allow to create admin
+        // in production mode: not allow to create admin
+        if (!repo.IsRoleExist(UserRole.Admin))
         {
-            // if in debug mode, create default admin
+            // if in debug mode, create admin
             if (true)
             {
                 Log.Information("Start creating default admin");
@@ -73,7 +98,7 @@ class Program
                 repo.AddUser(defaultAdmin);
                 Log.Information("Default admin created");
             }
-            else if (false) // if in production mode, exit application
+            else if (false) // if in production mode, not allow to create admin
             {
                 Log.Information("No valid user database. Contact administrator");
                 return;
@@ -110,6 +135,24 @@ class Program
         //--------------------
         // END user manager        
         //---------------------------------------------------------------
+
+        // //---------------------------------------------------------------
+        // // START app config
+        // //----------------------
+        // foreach (var property in typeof(AppConfig).GetProperties())
+        // {
+        //     var value = (int)property.GetValue(config);
+
+        //     var limit = ConfigLimits.Get(property.Name);
+
+        //     if (limit != null)
+        //     {
+        //         limit.Validate(property.Name, value);
+        //     }
+        // }
+        // //--------------------
+        // // END app config        
+        // //---------------------------------------------------------------
 
         //---------------------------------------------------------------
         // START camera manager
