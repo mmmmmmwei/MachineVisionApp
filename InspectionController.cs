@@ -1,49 +1,90 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
+
+public class Frame
+{
+    // placeholder for your image
+}
+
+public class CameraController
+{
+    public void Initialize()
+    {
+        // open camera and configure FreeRun
+    }
+
+    public void StartAcquisition()
+    {
+        // SDK call to start acquisition
+    }
+
+    public void StopAcquisition()
+    {
+        // SDK call to stop acquisition
+    }
+
+    public Frame GrabFrame()
+    {
+        // SDK call to get frame
+        return new Frame();
+    }
+}
 
 public class InspectionController
 {
     private CameraController camera;
 
-    private Thread acquisitionThread;
-    private bool running;
+    // threads
+    private Thread cameraThread;
+    private Thread inspectionThread;
 
+    // running flags
+    private volatile bool running = false;
+    private volatile bool exitThreads = false;
+
+    // mode control
     private int durationMs;
+    private enum Mode { SingleShot, TimedRun, Manual }
     private Mode currentMode;
 
-    private enum Mode
-    {
-        SingleShot,
-        TimedRun,
-        Manual
-    }
+    // thread-safe queue
+    private ConcurrentQueue<Frame> frameQueue = new ConcurrentQueue<Frame>();
 
     public InspectionController(CameraController cam)
     {
         camera = cam;
+
+        // create persistent threads
+        cameraThread = new Thread(CameraLoop) { IsBackground = true };
+        inspectionThread = new Thread(InspectionLoop) { IsBackground = true };
+
+        cameraThread.Start();
+        inspectionThread.Start();
     }
 
-    // MODE 1
+    // ====== PUBLIC METHODS FOR MODES ======
     public void SingleShot()
     {
+        if (running) return;
         currentMode = Mode.SingleShot;
-        StartThread();
+        running = true;
     }
 
-    // MODE 2
     public void RunForDuration(int ms)
     {
+        if (running) return;
         durationMs = ms;
         currentMode = Mode.TimedRun;
-        StartThread();
+        running = true;
     }
 
-    // MODE 3
     public void StartManual()
     {
+        if (running) return;
         currentMode = Mode.Manual;
-        StartThread();
+        running = true;
     }
 
     public void StopManual()
@@ -51,57 +92,75 @@ public class InspectionController
         running = false;
     }
 
-    private void StartThread()
+    // ====== SHUTDOWN ======
+    public void Shutdown()
     {
-        running = true;
+        running = false;
+        exitThreads = true;
 
-        acquisitionThread = new Thread(AcquisitionLoop);
-        acquisitionThread.IsBackground = true;
-        acquisitionThread.Start();
+        cameraThread.Join();
+        inspectionThread.Join();
     }
 
-    private void AcquisitionLoop()
+    // ====== CAMERA THREAD ======
+    private void CameraLoop()
     {
         camera.StartAcquisition();
 
-        switch (currentMode)
+        while (!exitThreads)
         {
-            case Mode.SingleShot:
+            if (!running)
+            {
+                Thread.Sleep(10);
+                continue;
+            }
 
-                var frame = camera.GrabFrame();
-                Inspect(frame);
+            // Grab frame
+            Frame frame = camera.GrabFrame();
+            frameQueue.Enqueue(frame);
+
+            // If single shot, stop after 1 frame
+            if (currentMode == Mode.SingleShot)
+            {
                 running = false;
+            }
 
-                break;
-
-            case Mode.TimedRun:
-
-                var timer = Stopwatch.StartNew();
-
-                while (running && timer.ElapsedMilliseconds < durationMs)
+            // If timed run, check duration
+            if (currentMode == Mode.TimedRun)
+            {
+                // Use Stopwatch to measure elapsed time
+                Stopwatch sw = Stopwatch.StartNew();
+                if (sw.ElapsedMilliseconds >= durationMs)
                 {
-                    frame = camera.GrabFrame();
-                    Inspect(frame);
+                    running = false;
                 }
-
-                break;
-
-            case Mode.Manual:
-
-                while (running)
-                {
-                    frame = camera.GrabFrame();
-                    Inspect(frame);
-                }
-
-                break;
+            }
         }
 
         camera.StopAcquisition();
     }
 
-    private void Inspect(object frame)
+    // ====== INSPECTION THREAD ======
+    private void InspectionLoop()
     {
-        // vision algorithm here
+        while (!exitThreads)
+        {
+            if (!running && frameQueue.IsEmpty)
+            {
+                Thread.Sleep(5);
+                continue;
+            }
+
+            if (frameQueue.TryDequeue(out Frame frame))
+            {
+                Inspect(frame);
+            }
+        }
+    }
+
+    private void Inspect(Frame frame)
+    {
+        // Vision algorithm here
+        Console.WriteLine("Frame inspected at " + DateTime.Now.ToString("HH:mm:ss.fff"));
     }
 }
