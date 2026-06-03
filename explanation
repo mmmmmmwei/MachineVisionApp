@@ -1,0 +1,58 @@
+currently i have a python repo that execute the rule checking for semiconductor chip (mainly AI chip such as broadcom hammer, hellcat, jericot4c, and GUC k2 bga)
+
+- a product is mainly composed of:
+ - substrate
+  - top view:
+    - C4 ball (for die attach)
+    - SMD (SMT small components)
+    - pin 1
+    - fiducial mark
+    - 2D barcode
+    - die (after die attach)
+  - bottom view:
+    - BGA balls
+    - SMD (SMT small components)
+    - pin 1
+    - fiducial mark
+ - lid (or called ring)
+  - top view:
+    - 2D barcode
+- a product will have multiple drawings
+ - SBT : substrate and the components on it
+ - lid : lid and the components on it
+ - BD : substrate and the components on it for bottom and top, for top sometimes it has lid
+ - POD : combined of substrate and lid and the components of them
+
+
+- currently the python program is mainly to replace human to:
+  - check the validity of drawing (consistent component and coordinate across different drawings), example:
+    - the difference of position of bga balls across drawing must within tolerance
+    - count the number of fiducial mark, make sure the number is 4 and the shape of 3 must be same with another one
+  - check the dimension of the components and their coordinate relative to other components to make sure it can be fabricated, example:
+    - nearest distance of the fiducial mark vertices point to lid or substrate
+
+- currently the program flow is:
+  - recognize the component from the drawing (maybe dxf)
+  - parse the dxf into csv
+  - match the component with the csv entities
+  - use the raw entities (polylines, arc, etc) to compute the rule checking
+  - for each rule, we will find the needed components from csv, get the points, and do measurement
+
+
+- challenges:
+  - duplicated function for multiple rules
+  - some rule will use components from multiple drawing, and the coordinate system of the drawing are different for different drawing
+  - currently will define the rules under each drawing (example as below), and we will loop through all the drawing and carry out the rule under that drawing. but if the rule require cross drawing, we will hard code to find
+    - POD: rule1, rule2
+    - LID: rule3, rule4
+  - different product will have slight different components in each drawing, for example BD drawing top view sometimes has lid while some dont have. so currently we need to find if this drawing cannot find this component, will go to another drawing to find
+  - currently we will some components are already extracted in preliminary step, but since sometimes involve cross drawing we need to extract again in the specified rule function, and some components are not extracted earlier.
+
+
+
+  how should i use claude code to help me restructure everything? my plan is:
+  - extract all the components from all drawing, and store as class (lid, substrate, 2d barcode, ...), and store the points using polygon..
+  - for each rule, define which component from which view from which drawing, and do measure (component1, component2)
+
+
+  what do u think?
